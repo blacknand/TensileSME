@@ -15,6 +15,8 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
@@ -39,7 +41,9 @@ int main(int argc, char** argv) {
     registry.insert<mlir::func::FuncDialect,
                     mlir::linalg::LinalgDialect,
                     mlir::memref::MemRefDialect,
-                    mlir::arith::ArithDialect>();
+                    mlir::arith::ArithDialect,
+                    mlir::tensor::TensorDialect,
+                    mlir::affine::AffineDialect>();
     mlir::MLIRContext context(registry);
     context.loadAllAvailableDialects();
 

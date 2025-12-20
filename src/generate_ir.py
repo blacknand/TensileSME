@@ -1,77 +1,72 @@
-# Frontend for Python matmul operations
-
 import sys
 print(f"Python executable: {sys.executable}")
 print(f"Path: {sys.path}\n\n")
 import numpy as np
-from mlir.ir import Context, Module, InsertionPoint, Location, RankedTensorType, F32Type, FunctionType
+from colorama import Fore
+from mlir.ir import Context, Module, InsertionPoint, Location, RankedTensorType, F32Type, FunctionType, AffineMap, AffineDimExpr
 from mlir.dialects import func, linalg, arith, tensor
 
-"""
-The following is an example of what TensorSME generates,
-build_matmul_ir then uses the MLIR API to generate the MLIR
-to create the matmul_py subroutine.
-"""
-def matmul_py(matrix1, matrix2):
-    mat1 = np.random.rand(128, 128).astype(np.float32)
-    mat2 = np.random.rand(128, 128).astype(np.float32)
-    res = 0
-    for i in range(len(mat1)):
-        for j in range(len(mat1[0])):
-            res += (mat1[i][j] * mat2[i][j])
-    return res
+def build_matmul_ir(module):
+    f32 = F32Type.get()
+    tensor_type = RankedTensorType.get([128, 128], f32)
+    func_type = FunctionType.get(inputs=[tensor_type, tensor_type], results=[tensor_type])
+    func_op = func.FuncOp(name="matmul", type=func_type)
+    entry_block = func_op.add_entry_block()
+    with InsertionPoint(entry_block):
+        arg0 = entry_block.arguments[0]
+        arg1 = entry_block.arguments[1]
+        zero_op = arith.ConstantOp(f32, 0.0)
+        zero_val = zero_op.results[0]
+        empty_op = tensor.EmptyOp([128, 128], f32)
+        empty_val = empty_op.results[0]
+        filled_val = linalg.fill(zero_val, outs=[empty_val])
+        matmul_res = linalg.matmul(arg0, arg1, outs=[filled_val])
+        func.ReturnOp([matmul_res])
+    module.body.append(func_op)
 
-def save_mlir(module, filename):
-    with open(filename, "w") as f:
-        f.write(str(module))
-
-def build_matmul_ir():
-    with Context() as _, Location.unknown():
-        module = Module.create() 
-        f32 = F32Type.get()
-        tensor_type = RankedTensorType.get([128, 128], f32)
-        func_type = FunctionType.get(inputs=[tensor_type, tensor_type], results=[tensor_type])
-        func_op = func.FuncOp(name="matmul", type=func_type)
-        entry_block = func_op.add_entry_block()
-        with InsertionPoint(entry_block):
-            arg0 = entry_block.arguments[0]
-            arg1 = entry_block.arguments[1]
-            zero_op = arith.ConstantOp(f32, 0.0)
-            zero_val = zero_op.results[0]
-            empty_op = tensor.EmptyOp([128, 128], f32)
-            empty_val = empty_op.results[0]
-            filled_val = linalg.fill(zero_val, outs=[empty_val])
-            matmul_res = linalg.matmul(arg0, arg1, outs=[filled_val])
-            func.ReturnOp([matmul_res])
-        module.body.append(func_op)
-
-        try:
-            module.operation.verify()
-            print("matmul verified successfully.")
-            save_mlir(module, "module.mlir")
-        except Exception as e:
-            print("matmul verification unsuccessful.")
-            print(e)
-            print(module)
-
-def build_bias_add():
-    with Context() as _, Location.unkown():
-        module = Module.create()
-        func_type = None
-        func_op = func.FuncOp(name="biasadd", type=func_type)
-        entry_block = func_op.add_entry_block()
-        with InsertionPoint(entry_block):
-
-            func.ReturnOp([])
-        module.body.append(func_op)
-
-        try:
-            module.operation.verify()
-            print("biasadd verified successfully.")
-        except Exception as e:
-            print("biasadd verification unsuccessful.")
-            print(e)
-            print(module)
+def build_bias_add(module):
+    f32 = F32Type.get()
+    matrix_type = RankedTensorType.get([128, 128], f32)
+    vector_type = RankedTensorType.get([128], f32)
+    d0 = AffineDimExpr.get(0)
+    d1 = AffineDimExpr.get(1)
+    map_matrix = AffineMap.get(2, 0, [d0, d1])
+    map_vector = AffineMap.get(2, 0, [d1])
+    map_output = AffineMap.get(2, 0, [d0, d1])
+    maps = [map_matrix, map_vector, map_output]
+    iterators = ["parallel", "parallel"]
+    func_type = FunctionType.get(inputs=[matrix_type, vector_type], results=[matrix_type])
+    func_op = func.FuncOp(name="bias_add", type=func_type)
+    entry_block = func_op.add_entry_block()
+    with InsertionPoint(entry_block):
+        matrix_arg0 = entry_block.arguments[0]
+        vector_arg1 = entry_block.arguments[1]
+        init_tensor = tensor.EmptyOp([128, 128], f32)
+        generic_op = linalg.GenericOp(
+            result_tensors=[matrix_type],
+            inputs=[matrix_arg0, vector_arg1],
+            outputs=[init_tensor],
+            indexing_maps=maps,
+            iterator_types=iterators
+        )
+        generic_block = generic_op.regions[0].blocks.append(f32, f32, f32)
+        with InsertionPoint(generic_block):
+            m_val = generic_block.arguments[0]
+            v_val = generic_block.arguments[1]
+            m_v_add_op = arith.AddFOp(m_val, v_val) 
+            linalg.YieldOp([m_v_add_op.result])
+        func.ReturnOp([generic_op.results[0]])
+    module.body.append(func_op)
 
 if __name__ == "__main__":
-    build_matmul_ir()
+    with Context() as ctx, Location.unknown():
+        module = Module.create()
+        build_matmul_ir(module)
+        build_bias_add(module)
+        if module.operation.verify():
+            print(Fore.GREEN + "module successfully verified.")
+            with open("module.mlir", "w") as f:
+                 f.write(str(module))
+        else:
+            print(Fore.RED + "verification failed.")
+            print(module)

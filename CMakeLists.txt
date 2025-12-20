@@ -34,6 +34,8 @@ target_link_libraries(${TOOL_NAME} PRIVATE
     MLIRLinalgDialect
     MLIRMemRefDialect
     MLIRArithDialect 
+    MLIRAffineDialect
+    MLIRTensorDialect
     
     # Core Infrastructure
     MLIRIR

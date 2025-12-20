@@ -1,13 +1,9 @@
 # TensileSME
-JIT/AOT compiler for matrix multiplication and linear layers in Python targeting AArch64 Arm SME built on MLIR
-> NOTE: TensileSME is not a Python compiler. It only compiles matrix and linear layer operations in Python.
+Compiler for lowering high-level Python tensor operations directly to bare-metal Arm SME assembly. TensileSME aims to bridge the gap between abstract linear alebra with Python/NumPy and hardware-accelerated loop nests with Armv9 Streaming SVE without relying on heavy runtimes like PyTorch or TensorFlow.
 
-## Why use this?
-Dont. Use CUDA or something else.
-
-## Example
-```python
 > NOTE: not working example
+## Basic matrix multiplication example
+```python
 import numpy as np
 import tensor_sme as sme
 
@@ -19,13 +15,34 @@ B = np.random.rand(128, 128).astype(np.float32)
 def matmul_kernel(a, b):
     return s.matmul(a, b)
 
-@ame.jit
-def linear_layer_kernel(a, b):
-    return s.
-
 # Generate SME code, execute it and return a NumPy Array
 C = kernel(A, B)
 ```
+
+## Bias add example
+```python
+import numpy as np
+import tensor_sme as sme
+
+weight = np.random.rand(128, 128).astype(np.float32)
+bias = np.random.rand(128, 128).astype(np.float32)
+
+@sme.jit
+def dense_layer(input_data):
+    partial = sme.matmu(input_data, weights)
+    final = sme.bias_add(partial, bias)
+    return final
+
+input_data = np.random.rand(128, 128).astype(np.float32)
+result = dense_layer(input_data)
+```
+
+## Architecture
+The compiler operates in a strict multi-phase pipeline:
+1. **Frontend**: Generates MLIR using Python bindings. Hanldes shape inference and type verification programatically.
+2. **Driver**: A executable that ingests the generated IR, manages the MLIR context, dialect registry, and pass manager. Verifices the semantic correctness.
+3. **Middle-end**: Converts abstract math into hardware friendly loops. Performs one-shot bufferization to map immutable Tensors to mutable MemRefs.
+4. **Backend**: Lowers loops to `vector` and `arm_sme` intrinsics. Manages ZA tile state and streaming mode. 
 
 ## Usage
 ```bash
@@ -33,7 +50,11 @@ C = kernel(A, B)
 ```
 
 ## Build
-- TensileSME uses the LLVM and MLIR. You will need to clone and build LLVM and MLIR on your local machine, in the root of your TensileSME clone. **Build instructions are not complete. Follow the MLIR build instructions.**
+### Prerequisites
+- LLVM/IR built from source (requires C++ 20)
+- Python 3.10 with numpy and MLIR Python bindings
+- CMake 3.20+
+### Build driver
 ```bash
 mkdir build_driver
 cd build_driver
