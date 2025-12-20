@@ -7,3 +7,5 @@ learning.md
 src/test_ir.py
 /research
 module.mlir
+bias_add.mlir
+matmul.mlir

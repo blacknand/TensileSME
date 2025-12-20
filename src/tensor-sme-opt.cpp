@@ -17,6 +17,9 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/ArmSME/IR/ArmSME.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
@@ -43,7 +46,10 @@ int main(int argc, char** argv) {
                     mlir::memref::MemRefDialect,
                     mlir::arith::ArithDialect,
                     mlir::tensor::TensorDialect,
-                    mlir::affine::AffineDialect>();
+                    mlir::affine::AffineDialect,
+                    mlir::vector::VectorDialect,
+                    mlir::scf::SCFDialect,
+                    mlir::arm_sme::ArmSMEDialect>();
     mlir::MLIRContext context(registry);
     context.loadAllAvailableDialects();
 
