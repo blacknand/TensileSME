@@ -7,7 +7,6 @@ Compiler for lowering high-level Python tensor operations directly to bare-metal
 import numpy as np
 import tensor_sme as sme
 
-# Define standard data
 A = np.random.rand(128, 128).astype(np.float32)
 B = np.random.rand(128, 128).astype(np.float32)
 
@@ -15,7 +14,6 @@ B = np.random.rand(128, 128).astype(np.float32)
 def matmul_kernel(a, b):
     return s.matmul(a, b)
 
-# Generate SME code, execute it and return a NumPy Array
 C = kernel(A, B)
 ```
 
@@ -46,11 +44,13 @@ The compiler operates in a strict multi-phase pipeline:
 
 ## Usage
 ```bash
-./tensor-sme-opt model.mlir <--examine-mlir>
+./tensor-sme-opt model.mlir <--examine-mlir>    # NOTE: Not final usage
 ```
 
 ## Build
-### Prerequisites
+
+### Prerequisites
+
 - LLVM/IR built from source (requires C++ 20)
 - Python 3.10 with numpy and MLIR Python bindings
 - CMake 3.20+
