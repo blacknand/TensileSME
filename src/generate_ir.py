@@ -3,7 +3,7 @@ print(f"Python executable: {sys.executable}")
 print(f"Path: {sys.path}\n\n")
 import numpy as np
 from colorama import Fore
-from mlir.ir import Context, Module, InsertionPoint, Location, RankedTensorType, F32Type, FunctionType, AffineMap, AffineDimExpr
+from mlir.ir import Context, Module, InsertionPoint, Location, RankedTensorType, F32Type, FunctionType, AffineMap, AffineDimExpr, UnitAttr
 from mlir.dialects import func, linalg, arith, tensor
 
 def build_matmul_ir(module):
@@ -58,11 +58,61 @@ def build_bias_add(module):
         func.ReturnOp([generic_op.results[0]])
     module.body.append(func_op)
 
+def build_linear_layer_ir(module):
+    f32 = F32Type.get()
+    matrix_type = RankedTensorType.get([128, 128], f32)
+    vector_type = RankedTensorType.get([128], f32)
+    func_type = FunctionType.get(
+        inputs=[matrix_type, matrix_type, vector_type],
+        results=[matrix_type]
+    )
+    func_op = func.FuncOp(name="main", type=func_type)
+    func_op.attributes["llvm.emit_c_interface"] = UnitAttr.get()
+    entry_block = func_op.add_entry_block()
+    with InsertionPoint(entry_block):
+        A = entry_block.arguments[0]
+        B = entry_block.arguments[1]
+        Bias = entry_block.arguments[2]
+        zero = arith.ConstantOp(f32, 0.0).results[0]
+        empty_mat = tensor.EmptyOp([128, 128], f32)
+        filled_mat = linalg.fill(zero, outs=[empty_mat])
+
+        matmul_res = linalg.matmul(A, B, outs=[filled_mat])
+        
+        # Take matmul_res and add the Bias to it
+        # Maps:
+        #       - Input 1 (matrix): (d0, d1) -> (d0, d1)
+        #       - Input 2 (Bias):   (d0, d1) -> (d1)
+        #       - Output:           (d0, d1) -> (d0, d1)
+        d0 = AffineDimExpr.get(0)
+        d1 = AffineDimExpr.get(1)
+        map_matrix = AffineMap.get(2, 0, [d0, d1])
+        map_vector = AffineMap.get(2, 0, [d1])
+        init_bias_out = tensor.EmptyOp([128, 128], f32).results[0]
+        generic_op = linalg.GenericOp(
+            result_tensors=[matrix_type],
+            inputs=[matmul_res, Bias],
+            outputs=[init_bias_out],
+            indexing_maps=[map_matrix, map_vector, map_matrix],
+            iterator_types=["parallel", "parallel"]
+        )
+
+        generic_block = generic_op.regions[0].blocks.append(f32, f32, f32)
+        with InsertionPoint(generic_block):
+            in_mat_val = generic_block.arguments[0]
+            in_vec_val = generic_block.arguments[1]
+            add_op = arith.AddFOp(in_mat_val, in_vec_val)
+            zero_op = arith.ConstantOp(f32, 0.0)
+            relu_res = arith.MaximumFOp(add_op.result, zero_op.result)
+            linalg.YieldOp([relu_res.result])
+        func.ReturnOp([generic_op.results[0]])
+    module.body.append(func_op)
+
 if __name__ == "__main__":
     with Context() as ctx, Location.unknown():
         module = Module.create()
-        build_matmul_ir(module)
-        build_bias_add(module)
+        build_linear_layer_ir(module)
+
         if module.operation.verify():
             print(Fore.GREEN + "module successfully verified.")
             with open("module.mlir", "w") as f:
