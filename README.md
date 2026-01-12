@@ -1,46 +1,40 @@
 # TensileSME
-Compiler for lowering high-level Python tensor operations directly to bare-metal Arm SME assembly. TensileSME aims to bridge the gap between abstract linear alebra with Python/NumPy and hardware-accelerated loop nests with Armv9 Streaming SVE without relying on heavy runtimes like PyTorch or TensorFlow.
+TensileSME is a vertical-slice compiler that lowers high-level Python tensor operations directly to Armv9 Streaming SVE assembly. It bridges the gap between abstract linear algebra (NumPy) and bare-metal hardware acceleration. Unlike heavy frameworks (PyTorch, TensorFlow) which rely on large, pre-compiled runtime libraries, TensileSME uses MLIR to JIT-compile custom kernels specifically optimized for the Arm SME architecture.
 
-> NOTE: not working example
-## Basic matrix multiplication example
+## Core features
+- Zero-Overhead Abstraction: Python decorators (@sme.jit) compile directly to machine code.
+- Hardware-Aware Tiling: Automatically breaks large matrices into hardware-friendly tiles (ZA-Tile alignment).
+- Kernel Fusion: Fuses Matmul + Bias + ReLU into single loop nests to minimize memory traffic.
+- No Bloat: Designed for high-performance edge inference where every kilobyte of memory matters.
+
+## Example
 ```python
+import tensile_sme as sme
 import numpy as np
-import tensor_sme as sme
 
+# 1. Setup Data (Host Side)
+# Standard NumPy arrays. No custom data types required.
 A = np.random.rand(128, 128).astype(np.float32)
 B = np.random.rand(128, 128).astype(np.float32)
+Bias = np.random.rand(128).astype(np.float32)
 
-@ame.jit
-def matmul_kernel(a, b):
-    return s.matmul(a, b)
-
-C = kernel(A, B)
-```
-
-## Bias add example
-```python
-import numpy as np
-import tensor_sme as sme
-
-weight = np.random.rand(128, 128).astype(np.float32)
-bias = np.random.rand(128, 128).astype(np.float32)
-
+# 2. Define the Kernel
+# The JIT compiler lowers this pure Python function to an MLIR Module,
+# applies tiling and bufferization passes, and emits an Arm object file.
 @sme.jit
-def dense_layer(input_data):
-    partial = sme.matmu(input_data, weights)
-    final = sme.bias_add(partial, bias)
-    return final
+def fused_linear_layer(a, b, bias):
+    # TensileSME detects the pattern and fuses these into a
+    # single hardware kernel loop.
+    dense = sme.matmul(a, b)
+    biased = dense + bias  # Implicit broadcasting
+    return sme.relu(biased)
 
-input_data = np.random.rand(128, 128).astype(np.float32)
-result = dense_layer(input_data)
+# 3. Execute
+# Triggers compilation and executes on the SME hardware/emulator.
+C = fused_linear_layer(A, B, Bias)
+
+print(f"Inference Complete. Result shape: {C.shape}")
 ```
-
-## Architecture
-The compiler operates in a strict multi-phase pipeline:
-1. **Frontend**: Generates MLIR using Python bindings. Hanldes shape inference and type verification programatically.
-2. **Driver**: A executable that ingests the generated IR, manages the MLIR context, dialect registry, and pass manager. Verifices the semantic correctness.
-3. **Middle-end**: Converts abstract math into hardware friendly loops. Performs one-shot bufferization to map immutable Tensors to mutable MemRefs.
-4. **Backend**: Lowers loops to `vector` and `arm_sme` intrinsics. Manages ZA tile state and streaming mode. 
 
 ## Usage
 ```bash
@@ -52,7 +46,7 @@ The compiler operates in a strict multi-phase pipeline:
 ### Prerequisites
 
 - LLVM/IR built from source (requires C++ 20)
-- Python 3.10 with numpy and MLIR Python bindings
+- Python 3.10 with MLIR Python bindings
 - CMake 3.20+
 ### Build driver
 ```bash
