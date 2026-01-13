@@ -40,3 +40,4 @@ def fused_linear_layer(a, b, bias):
 C = fused_linear_layer(A, B, Bias)
 
 print(f"Inference Complete. Result shape: {C.shape}")
+```

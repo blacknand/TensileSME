@@ -26,7 +26,10 @@ add_definitions(${LLVM_DEFINITIONS})
 
 set(TOOL_NAME tensor-sme-opt)
 # add_executable(${TOOL_NAME} src/tensor-sme-opt.cpp)
-add_llvm_executable(${TOOL_NAME} src/tensor-sme-opt.cpp)
+add_llvm_executable(${TOOL_NAME} 
+    src/tensor-sme-opt.cpp
+    src/tensorSMEPipeline.cpp
+)
 
 target_link_libraries(${TOOL_NAME} PRIVATE
     # Dialects used in C++
@@ -46,6 +49,9 @@ target_link_libraries(${TOOL_NAME} PRIVATE
     MLIRSupport
     MLIRPass
     MLIROptLib
+
+    # Passes
+    MLIRTransforms
     
     # Execution Engine / Runner Utils (Useful for later)
     # MLIRExecutionEngine
